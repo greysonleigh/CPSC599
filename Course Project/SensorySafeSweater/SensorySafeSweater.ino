@@ -9,17 +9,17 @@
  * varying depending on the speed of the wearer's heart rate.
  * 
  * This program includes functions from FrankieChu of Seeedstudio, and High-Low Tech
- * of MIT Media Lab where indicated.
+ * of MIT Media Lab where indicated. See course website for further details.
  */
 
 #include <PCM.h>
 
 unsigned char counter;   //initialize counter array index used for the interrupt
-unsigned long temp[21];  //initialize array for interrupt
-unsigned long sub;       //initialize variable for length of inactivity from sensor
-bool data_effect = true; //initialize boolean variable, indicating whether a heart rate is detected
-unsigned int heart_rate; //initialize variable for heart rate calculation
-const int max_heartpulse_duty = 2000; //2 seconds - returns error if the duty overtrip 2 second.
+unsigned long readingArray[21];  //initialize array for interrupt
+unsigned long inactivity;       //initialize variable for length of inactivity from sensor, in seconds
+bool pulseDetected = true; //initialize boolean variable, indicating whether a heart rate is detected
+unsigned int heartRate; //initialize variable for heart rate calculation
+const int bpmMaxDelayTimer = 2000; //2 seconds - returns error if the duty overtrip 2 second.
 
 
 //PCM audio of a Pokemon sound effect. Source: Pokemon Cries on YouTube. Edited by Greyson Mannella.
@@ -49,7 +49,7 @@ const unsigned char owlHoot[] PROGMEM = {
 void setup() {
   Serial.begin(9600);
   arrayInit();
-  attachInterrupt(0, interrupt, RISING);//set interrupt 0,digital port 2
+  attachInterrupt(0, interrupt, RISING);//set interrupt 0, digital port 2
 }
 
 
@@ -58,14 +58,14 @@ void loop() {
 
 
 /*arrayInit(): initializes the array.
-Written by FrankieChu.*/
+Modified from code by FrankieChu.*/
 void arrayInit()
 {
   for (unsigned char i = 0; i < 20; i ++)
   {
-    temp[i] = 0;
+    readingArray[i] = 0;
   }
-  temp[20] = millis();
+  readingArray[20] = millis();
 }
 
 
@@ -73,66 +73,66 @@ void arrayInit()
 Modified from code by FrankieChu. */
 void findHeartRate()
 {
-  if (data_effect)
+  if (pulseDetected)
   {
-    heart_rate = 1200000 / (temp[20] - temp[0]); //60*20*1000/20_total_time
+    heartRate = 1200000 / (readingArray[20] - readingArray[0]); //60*20*1000/20_total_time
     Serial.print("Heart rate is:\t");
-    Serial.println(heart_rate);
-    playSound();
+    Serial.println(heartRate);
+    playSound();     //call sound method, which will cue a sound based on the heart rate
   }
-  data_effect = 1; //sign bit
+  pulseDetected = 1; //indicate that pulse was detected, then return to interrupt routine
 }
 
 
 /*playSound(): plays one of four different sounds depending on heart rate input value.
 Modified from code by High-Low Tech.*/
 void playSound(){
-  if (heart_rate < 70){
-    startPlayback(mrrp, sizeof(mrrp));
+  if (heartRate < 70){
+    startPlayback(mrrp, sizeof(mrrp));          //low heart rate, relaxing consistent sound
   }
-  else if (heart_rate >= 70 && heart_rate < 80){
+  else if (heartRate >= 70 && heartRate < 80){  //moderate heart rate, something a bit more sudden
     startPlayback(owlHoot, sizeof(owlHoot));
   }
-  else if (heart_rate >= 80 && heart_rate < 90){
-    startPlayback(guitarJingle, sizeof(guitarJingle));
+  else if (heartRate >= 80 && heartRate < 90){
+    startPlayback(guitarJingle, sizeof(guitarJingle));  //high heart rate, something instantaneously calming
   } 
   else {
-    startPlayback(rowletCry, sizeof(rowletCry));
+    startPlayback(rowletCry, sizeof(rowletCry));    //very high heart rate, pulling out big guns
   }
 }
 
 /*interrupt(): Interrupt service routine. Gets the signal from the external interrupt.
-Written by FrankieChu.*/
+Modified from code by FrankieChu.*/
 void interrupt()
 {
-  temp[counter] = millis();
+  readingArray[counter] = millis();
   switch (counter)
   {
     case 0:
-      sub = temp[counter] - temp[20];
+      inactivity = readingArray[counter] - readingArray[20];
       break;
     default:
-      sub = temp[counter] - temp[counter - 1];
+      inactivity = readingArray[counter] - readingArray[counter - 1];
       break;
   }
-  if (sub > max_heartpulse_duty) //set 2 seconds as max heart pulse duty
+  if (inactivity > bpmMaxDelayTimer) //if no activity is detected for longer than 2 seconds...
   {
-    data_effect = 0; //sign bit
-    counter = 0;
+    pulseDetected = 0; //no pulse detected
+    counter = 0;       //restart counter
     Serial.println("Heart rate measure error, test will restart!" );
-    arrayInit();
+    arrayInit();       //reinitialize array
   }
-  if (counter == 20 && data_effect)
+  if (counter == 20 && pulseDetected)
   {
-    counter = 0;
-    findHeartRate();
+    counter = 0;       //restart counter
+    findHeartRate();   //calculate heart rate
   }
-  else if (counter != 20 && data_effect)
-    counter++;
-  else
+  else if (counter != 20 && pulseDetected)
+    counter++;         //keep counting up until counter hits 20
+  else                 //if counter is not at 20 but no error was found...
   {
-    counter = 0;
-    data_effect = 1;
+    counter = 0;       //restart counter
+    pulseDetected = 1; //
   }
 
 }
